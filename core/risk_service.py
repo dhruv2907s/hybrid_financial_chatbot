@@ -8,7 +8,6 @@ from core.explainer import RiskExplainer
 from core.forecast_risk import ForecastRiskEngine
 from core.regime_engine import RegimeEngine
 from core.risk_decomposition import RiskDecomposition
-from core.stress_test import StressTestEngine
 from core.capital_simulator import CapitalSimulator
 from core.context import RiskContext
 
@@ -24,7 +23,7 @@ class RiskService:
         self.forecast_engine = ForecastRiskEngine()
         self.regime_engine = RegimeEngine()
         self.decomposition_engine = RiskDecomposition()
-        self.stress_engine = StressTestEngine()
+        
         self.capital_simulator = CapitalSimulator()
 
     # -------- Asset Risk --------
@@ -44,35 +43,86 @@ class RiskService:
     # -------- Portfolio Risk (FULL) --------
     def evaluate_portfolio_full(self, price_dict, weights):
 
+        # -------- 1. Statistical Risk --------
         vol = self.portfolio_engine.compute_portfolio_volatility(price_dict, weights)
 
         decomposition = self.decomposition_engine.compute_marginal_risk_contribution(
             price_dict, weights
         )
 
-        stress = {
-            t: self.evaluate_stress_test(p)
-            for t, p in price_dict.items()
-        }
+        # -------- 2. Asset Risk Integration --------
+        asset_risks = {}
+        regimes = {}
 
-        # Explanation (important for demo)
-        explanation = f"Portfolio Volatility: {vol:.5f}\n\n"
+        for t, p in price_dict.items():
+            metrics = self.asset_engine.assess_asset(p)
+            asset_risks[t] = metrics["risk_score"]
 
-        explanation += "Risk Contribution:\n"
+            returns = self.asset_engine.compute_log_returns(p).dropna()
+            regimes[t] = self.regime_engine.detect_regime(returns)["regime"]
+
+        # -------- 3. Explanation --------
+        explanation = f"""
+    Portfolio Risk Analysis:
+
+    - Portfolio Volatility: {vol:.4f}
+
+    Risk Contribution:
+    """
+
+        max_asset = None
+        max_risk = 0
+
         for asset, val in decomposition.items():
-            explanation += f"- {asset}: {val['risk_percentage']*100:.2f}%\n"
+            risk_pct = val["risk_percentage"]
+            risk_score = asset_risks.get(asset, 0)
 
-        explanation += "\nStress Test:\n"
-        for asset, val in stress.items():
-            explanation += f"- {asset}: {val['stress_drawdown']:.2%}\n"
+            explanation += f"- {asset}: {risk_pct*100:.2f}% (Risk Score: {risk_score:.2f})\n"
+
+            if risk_pct > max_risk:
+                max_risk = risk_pct
+                max_asset = asset
+
+        # -------- 4. Interpretation --------
+        explanation += "\nInterpretation:\n"
+
+        if vol > 0.03:
+            explanation += "- Portfolio has HIGH volatility (risky)\n"
+        elif vol > 0.015:
+            explanation += "- Portfolio has MODERATE risk\n"
+        else:
+            explanation += "- Portfolio is relatively STABLE\n"
+
+        # -------- 5. Decision Layer --------
+        explanation += "\nRecommendations:\n"
+
+        if max_asset:
+            explanation += f"- {max_asset} contributes most to risk ({max_risk*100:.2f}%)\n"
+
+            if asset_risks[max_asset] > 0.6:
+                explanation += f"- {max_asset} has high intrinsic risk → strong candidate to reduce\n"
+
+            if max_risk > 0.5:
+                reduction_ratio = (max_risk - 0.4) / max_risk
+                explanation += f"- Reduce {max_asset} exposure by ~{max(0, reduction_ratio)*100:.1f}%\n"
+
+        # Regime-aware advice
+        high_vol_assets = [a for a, r in regimes.items() if r == "high_vol"]
+        if high_vol_assets:
+            explanation += f"- High volatility regime detected in: {', '.join(high_vol_assets)} → reduce aggressive positions\n"
+
+        # Diversification advice
+        if len(decomposition) >= 2:
+            explanation += "- Diversification can reduce portfolio risk\n"
 
         return {
             "portfolio_volatility": vol,
             "risk_contribution": decomposition,
-            "stress": stress,
+            "asset_risk_scores": asset_risks,
+            "regimes": regimes,
             "explanation": explanation
         }
-
+    
     # -------- Trade Risk (BASIC) --------
     def evaluate_trade(self, **kwargs):
 
@@ -142,24 +192,7 @@ class RiskService:
             weights
         )
 
-    # -------- Stress Test --------
-    def evaluate_stress_test(self, price_series):
 
-        returns = self.asset_engine.compute_log_returns(price_series).dropna()
-
-        if len(returns) < 10:
-            return {"stress_drawdown": 0.0}
-
-        shocked_returns = self.stress_engine.apply_sigma_shock(returns)
-
-        drawdown = self.stress_engine.compute_drawdown(shocked_returns)
-
-        # FINAL SAFETY CAP
-        drawdown = max(drawdown, -0.5)
-
-        return {
-            "stress_drawdown": drawdown
-        }
 
     # -------- Capital Survival --------
     def evaluate_capital_survival(
@@ -196,10 +229,12 @@ class RiskService:
             reward_risk_ratio = 2.0
 
         # Step 6: Simulate capital
-        results = self.capital_simulator.simulate(
-            win_rate=win_rate,
-            reward_risk_ratio=reward_risk_ratio,
-            initial_capital=initial_capital
+        results = self.capital_simulator.simulate_with_context(
+            ctx=None,  # or create dummy context if needed
+            initial_capital=initial_capital,
+            returns=returns,
+            n_sim=300,
+            n_trades=100
         )
 
         # Step 7: Attach context (VERY IMPORTANT FOR PAPER)
@@ -210,7 +245,7 @@ class RiskService:
         return results
 
     # -------- FULL PIPELINE (CORE CONTRIBUTION) --------
-    def full_analysis(self, ticker, price_series, predicted_prices=None):
+    def full_analysis(self, ticker, price_series, predicted_prices=None,trade_input=None,capital_input=None):
 
         ctx = RiskContext(ticker)
         ctx.price_series = price_series
@@ -242,24 +277,37 @@ class RiskService:
                 expected_shortfall=ctx.asset_metrics["expected_shortfall"],
                 predicted_prices=predicted_prices
             )
-
-        # ---------------- 5. Stress Testing ----------------
-        ctx.stress = self.evaluate_stress_test(price_series)
-
+        if trade_input:
+            ctx.trade = self.trade_engine.calculate_trade_with_context(
+                ctx,
+                entry_price=trade_input["entry_price"],
+                stop_loss=trade_input["stop_loss"],
+                take_profit=trade_input["take_profit"],
+                account_size=trade_input["account_size"]
+            )
+        
         # ---------------- 6. Capital Simulation ----------------
-        ctx.capital = self.evaluate_capital_survival(price_series)
+        if capital_input:
+            returns = self.asset_engine.compute_log_returns(price_series).dropna()
 
+            ctx.capital = self.capital_simulator.simulate_with_context(
+                ctx=ctx,
+                returns=returns,
+                initial_capital=capital_input.get("initial_capital", 100000),
+                n_trades=capital_input.get("n_trades", 50),
+                n_sim=capital_input.get("simulations", 500)
+            )
         # ---------------- 7. Composite Risk Score ----------------
         forecast_component = (
             ctx.forecast_risk["forecast_integrated_risk"]
             if ctx.forecast_risk else ctx.asset_metrics["volatility"]
         )
-
+        dd = ctx.capital.get("avg_drawdown", 0) if ctx.capital else 0.5
+        capital_component = max(0, 1 - dd)
         ctx.summary_score = (
             0.4 * ctx.asset_metrics["risk_score"] +
-            0.3 * min(abs(ctx.stress["stress_drawdown"]), 0.5) +
             0.2 * forecast_component +
-            0.1 * (1 - ctx.capital["ruin_probability"])
+            0.1 * capital_component
         )
 
         # ---------------- 8. Risk Label ----------------
@@ -272,33 +320,85 @@ class RiskService:
 
         # ---------------- 9. Recommendation ----------------
         ctx.recommendation = self.recommender.recommend_asset(ctx.asset_metrics)
-
+    
         # ---------------- 10. Explanation ----------------
-        ctx.explanation = f"""
-    Full Risk Analysis for {ticker}:
+        # ---- Safe Capital Block ----
+        capital_text = ""
 
-    📊 Statistical Risk:
-    - Volatility: {ctx.asset_metrics['volatility']:.4f}
-    - Expected Shortfall: {ctx.asset_metrics['expected_shortfall']:.4f}
-    - Risk Score: {ctx.asset_metrics['risk_score']:.4f}
+        if ctx.capital:
+            dd = ctx.capital.get("avg_drawdown", 0)
 
-    📉 Market Regime:
-    - Regime: {ctx.regime['regime']}
-    - Adjusted Risk: {ctx.adjusted_risk_percent*100:.2f}%
+            capital_text = f"""
+                Capital Outlook:
+                - Median Capital: {ctx.capital['median_final_capital']:.2f}
+                - Avg Drawdown: {dd:.2%}
+                """
 
-    ⚠ Stress Scenario:
-    - Estimated Drawdown: {ctx.stress['stress_drawdown']:.2%}
+        # ---- TRADE MODE (ONLY TRADE) ----
+        trade_quality = ""
+        if ctx.trade:
 
-    💰 Capital Outlook:
-    - Ruin Probability: {ctx.capital['ruin_probability']:.2%}
-    - Median Capital: {ctx.capital['median_final_capital']:.2f}
+            if "error" in ctx.trade:
+                ctx.explanation = f"""
+         Trade Evaluation for {ticker}:
 
-    📈 Composite Risk:
-    - Score: {ctx.summary_score:.4f}
-    - Level: {ctx.summary_label}
+         Error: {ctx.trade['error']}
 
-    🧠 Recommendation:
-    {ctx.recommendation}
-    """
+        Please check:
+        - Entry ≠ Stop Loss
+        - Proper trade inputs
+        """
+            else:
+                # 🔥 ADD THIS (NEW LOGIC)
+                rr = ctx.trade.get("risk_reward_ratio", 0)
 
+                if rr < 2:
+                    trade_quality = "❌ Trade Quality: Poor (RR < 2)"
+                elif rr < 3:
+                    trade_quality = "⚠ Trade Quality: Acceptable"
+                else:
+                    trade_quality = "✅ Trade Quality: Strong"
+
+                # 🔥 UPDATED EXPLANATION
+                ctx.explanation = f"""
+        Trade Evaluation for {ticker}:
+
+        - Position Size: {ctx.trade.get('position_size', 'N/A')} shares
+        - Risk/Reward Ratio: {ctx.trade.get('risk_reward_ratio', 'N/A')}
+        - Capital at Risk: {ctx.trade.get('capital_risk_percent', 'N/A')}%
+        - Exposure: {ctx.trade.get('total_exposure', 0):.2f}
+
+        Market Context:
+        - Regime: {ctx.regime['regime']}
+        - Volatility: {ctx.asset_metrics['volatility']:.4f}
+        
+
+         Recommendation:
+        {ctx.recommendation}
+
+        {trade_quality}
+        """
+        else:
+            # ---- NORMAL FULL ANALYSIS ----
+            ctx.explanation = f"""
+        Full Risk Analysis for {ticker}:
+
+        Statistical Risk:
+        - Volatility: {ctx.asset_metrics['volatility']:.4f}
+        - Expected Shortfall: {ctx.asset_metrics['expected_shortfall']:.4f}
+        - Risk Score: {ctx.asset_metrics['risk_score']:.4f}
+
+        Market Regime:
+        - Regime: {ctx.regime['regime']}
+        - Adjusted Risk: {ctx.adjusted_risk_percent*100:.2f}%
+
+        {capital_text}
+
+        Composite Risk:
+        - Score: {ctx.summary_score:.4f}
+        - Level: {ctx.summary_label}
+
+        Recommendation:
+        {ctx.recommendation}
+        """
         return ctx
