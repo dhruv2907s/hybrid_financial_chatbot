@@ -136,23 +136,31 @@ The plain `llm` (used in Step 1b) has no tools bound. The tool execution in Step
 ## Project Structure
 
 ```
-.
-├── app.py                    # Streamlit UI
-├── agent.py                  # Single-shot agent pipeline and tool definitions
-├── tft_Fold 3-v1.ckpt        # Pre-trained TFT model checkpoint
+├── app.py                           # Streamlit UI
+├── agent.py                         # Single-shot agent pipeline and tool definitions
+├── tft_Fold 3-v1.ckpt              # Pre-trained TFT model checkpoint
 ├── core/
-│   ├── tft_service.py        # TFT inference pipeline
-│   ├── risk_service.py       # Full risk analysis orchestrator
-│   ├── risk_sentinel.py      # Asset volatility and CVaR computation
-│   ├── regime_engine.py      # Market regime detection
-│   ├── trade_risk.py         # Position sizing and R:R calculation
-│   ├── capital_simulator.py  # Monte Carlo capital simulation
-│   ├── portfolio.py          # Portfolio volatility computation
-│   ├── risk_decomposition.py # Marginal risk contribution
-│   ├── forecast_risk.py      # Forecast-integrated risk scoring
-│   ├── recommender.py        # Rule-based recommendation engine
-│   ├── explainer.py          # Report text generation
-│   └── context.py            # RiskContext dataclass 
+│   ├── tft_service.py              # TFT inference pipeline
+│   ├── risk_service.py             # Full risk analysis orchestrator
+│   ├── risk_sentinel.py            # Asset volatility and CVaR computation
+│   ├── regime_engine.py            # Market regime detection
+│   ├── trade_risk.py               # Position sizing and R:R calculation
+│   ├── capital_simulator.py        # Monte Carlo capital simulation
+│   ├── portfolio.py                # Portfolio volatility computation
+│   ├── risk_decomposition.py       # Marginal risk contribution
+│   ├── forecast_risk.py            # Forecast-integrated risk scoring
+│   ├── recommender.py              # Rule-based recommendation engine
+│   ├── explainer.py                # Report text generation
+│   ├── context.py                  # RiskContext dataclass
+│   ├── walk_forward_tft.ipynb      # Walk-forward TFT training pipeline
+│   └── walk_forward_tft_testing.ipynb # TFT walk-forward evaluation/testing
+│
+├──filtered_broad_news.csv
+├──filtered_company_news.csv
+├──Financial_Categorized.csv
+├──financial_kb.json
+├──financial_sentiment.ipynb
+├──stock_market_final_30_macro.csv
 └── requirements.txt
 ```
 
