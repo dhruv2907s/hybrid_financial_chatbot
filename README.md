@@ -15,6 +15,7 @@ A production-grade quantitative finance terminal built on a PyTorch Temporal Fus
   ▶ Click the image above to watch the full QuantSentinel demo
 </p>
 
+---
 
 ## Overview
 
