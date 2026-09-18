@@ -2,20 +2,7 @@
 
 A production-grade quantitative finance terminal built on a PyTorch Temporal Fusion Transformer for stock direction forecasting, an institutional risk analysis pipeline with regime detection and Monte Carlo simulation, and a LangChain-powered conversational agent for trade and portfolio evaluation.
 
----
-## Demo
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=oAjEuWgfQ4E">
-    <img src="s1%20(2).png" width="700">
-  </a>
-</p>
-
-<p align="center">
-  ▶ Click the image above to watch the full QuantSentinel demo
-</p>
-
----
 
 ## Overview
 
