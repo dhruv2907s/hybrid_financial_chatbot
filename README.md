@@ -3,6 +3,18 @@
 A production-grade quantitative finance terminal built on a PyTorch Temporal Fusion Transformer for stock direction forecasting, an institutional risk analysis pipeline with regime detection and Monte Carlo simulation, and a LangChain-powered conversational agent for trade and portfolio evaluation.
 
 ---
+## Demo
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=oAjEuWgfQ4E">
+    <img src="s1%20(2).png" width="700">
+  </a>
+</p>
+
+<p align="center">
+  ▶ Click the image above to watch the full QuantSentinel demo
+</p>
+
 
 ## Overview
 
@@ -168,19 +180,18 @@ The plain `llm` (used in Step 1b) has no tools bound. The tool execution in Step
 
 ## Setup
 
-**Prerequisites:** Python 3.10+, CUDA-capable GPU recommended (CPU inference supported)
+**Requirements:** Python 3.10+, CUDA GPU recommended
 
 ```bash
-git clone https://github.com/namitpatel3006/financebot
-cd financebot
+git clone https://github.com/dhruv2907s/hybrid_financial_chatbot/
+cd QuantSentinel
 
 conda create -n tft_env python=3.10
 conda activate tft_env
-
 pip install -r requirements.txt
 ```
 
-Set your Groq API key:
+Create a `.env` file or set environment variables:
 
 ```bash
 # Windows
@@ -190,16 +201,12 @@ set GROQ_API_KEY=your_key_here
 export GROQ_API_KEY=your_key_here
 ```
 
-Place the model checkpoint in the project root:
-```
-tft_Fold 3-v1.ckpt
-```
+The TFT model checkpoint (`tft_Fold 3-v1.ckpt`) is too large for GitHub. Download it from:
+**[Google Drive / HuggingFace link here]** and place it in the project root.
 
-Run the application:
 ```bash
 python -m streamlit run app.py
 ```
-
 ---
 
 ## Usage
